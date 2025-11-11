@@ -17,15 +17,15 @@ function Navbar() {
             {/* Grupo: logo circular + título CALLTRACK */}
             <div className="d-flex align-items-center">
               {/* Logo circular con iniciales "CT" */}
-              <div className="bg- d-flex align-items-center justify-content-center me-3">
+              <button type="button" class="btn align-items-center justify-content-center me-3">
               <img 
                   src="src/Proyecto-nuevo1.png"
                   alt="Gestión de Tickets" 
                   width="50" 
                   height="40"
                   href="#"
-                />
-              </div>
+                  />
+              </button>
               {/* Título principal con tamaño de encabezado h4 y sin margen inferior */}
             </div>
             {/* Texto "Usuario Activo" alineado a la derecha, color gris neutro */}
