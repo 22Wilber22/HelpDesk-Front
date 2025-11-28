@@ -29,10 +29,10 @@ function LoginView() {
       }
     } catch (err) {
       console.error("Error en login:", err);
-      
+
       // Extraer mensaje de error más descriptivo
       let errorMessage = err.message || "Error al iniciar sesión";
-      
+
       // Si el error tiene detalles, intentar extraerlos
       if (err.details) {
         try {
@@ -46,7 +46,7 @@ function LoginView() {
           // Si no se puede parsear, usar el mensaje original
         }
       }
-      
+
       // Mensajes más amigables según el tipo de error
       if (errorMessage.includes("500")) {
         errorMessage = "Error del servidor. Por favor, contacta al administrador o intenta más tarde.";
@@ -57,7 +57,7 @@ function LoginView() {
       } else if (errorMessage.includes("Network") || errorMessage.includes("Failed to fetch")) {
         errorMessage = "Error de conexión. Por favor, verifica tu conexión a internet.";
       }
-      
+
       setError(errorMessage);
     } finally {
       setCargando(false);
@@ -317,7 +317,7 @@ function LoginView() {
       <div className="login-card">
         <div className="logo-container">
           <img
-            src="/src/Proyecto-nuevo1.png"
+            src="/Proyecto-nuevo1.png?v=2"
             alt="CALLTRACK"
             className="logo-img"
           />
