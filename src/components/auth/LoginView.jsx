@@ -317,7 +317,7 @@ function LoginView() {
       <div className="login-card">
         <div className="logo-container">
           <img
-            src="/Proyecto-nuevo1.png"
+            src="/Proyecto-nuevo1.png?v=2"
             alt="CALLTRACK"
             className="logo-img"
           />
