@@ -1,21 +1,66 @@
 import { useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { useAuth } from "../../hooks/useAuth";
+import { login as loginAPI } from "../../services/api";
 
-function LoginView({ onLogin }) {
-  const { login, cargando, error: authError } = useAuth();
+function LoginView() {
+  const { login: loginContext } = useAuth();
   const [correo, setCorreo] = useState("");
   const [password, setPassword] = useState("");
   const [mostrarPassword, setMostrarPassword] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
+    setCargando(true);
 
     try {
-      const usuario = await login(correo, password);
-      onLogin(usuario);
+      // Llamar al endpoint de login del backend
+      const response = await loginAPI(correo, password);
+
+      if (response.token && response.user) {
+        // Guardar token y usuario en el contexto
+        await loginContext(response.token, response.user);
+        // El AuthContext manejará la redirección automáticamente
+      } else {
+        throw new Error("Respuesta inválida del servidor");
+      }
     } catch (err) {
       console.error("Error en login:", err);
+      
+      // Extraer mensaje de error más descriptivo
+      let errorMessage = err.message || "Error al iniciar sesión";
+      
+      // Si el error tiene detalles, intentar extraerlos
+      if (err.details) {
+        try {
+          const details = typeof err.details === 'string' ? JSON.parse(err.details) : err.details;
+          if (details.error) {
+            errorMessage = details.error;
+          } else if (details.message) {
+            errorMessage = details.message;
+          }
+        } catch {
+          // Si no se puede parsear, usar el mensaje original
+        }
+      }
+      
+      // Mensajes más amigables según el tipo de error
+      if (errorMessage.includes("500")) {
+        errorMessage = "Error del servidor. Por favor, contacta al administrador o intenta más tarde.";
+      } else if (errorMessage.includes("401") || errorMessage.includes("403")) {
+        errorMessage = "Credenciales incorrectas. Por favor, verifica tu correo y contraseña.";
+      } else if (errorMessage.includes("404")) {
+        errorMessage = "Servicio no disponible. Por favor, verifica la conexión.";
+      } else if (errorMessage.includes("Network") || errorMessage.includes("Failed to fetch")) {
+        errorMessage = "Error de conexión. Por favor, verifica tu conexión a internet.";
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -291,7 +336,7 @@ function LoginView({ onLogin }) {
               <span className="input-icon-blur">📧</span>
               <input
                 type="email"
-                className={`form-input-blur ${authError ? "error" : ""}`}
+                className={`form-input-blur ${error ? "error" : ""}`}
                 placeholder="Correo electrónico"
                 value={correo}
                 onChange={(e) => setCorreo(e.target.value)}
@@ -306,7 +351,7 @@ function LoginView({ onLogin }) {
               <span className="input-icon-blur">🔒</span>
               <input
                 type={mostrarPassword ? "text" : "password"}
-                className={`form-input-blur ${authError ? "error" : ""}`}
+                className={`form-input-blur ${error ? "error" : ""}`}
                 placeholder="Contraseña"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -324,7 +369,7 @@ function LoginView({ onLogin }) {
             </div>
           </div>
 
-          {authError && <div className="error-box">⚠️ {authError}</div>}
+          {error && <div className="error-box">⚠️ {error}</div>}
 
           <button type="submit" className="btn-login-blur" disabled={cargando}>
             {cargando && <span className="spinner-blur"></span>}

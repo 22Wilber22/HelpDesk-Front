@@ -6,8 +6,17 @@ import {
   cerrarTicket,
   obtenerUsuarios
 } from '../services/api';
+import {
+  esEstadoValido,
+  esPrioridadValida,
+  normalizarEstado,
+  normalizarPrioridad,
+  validarDatosTicket
+} from '../constants';
+import { useAuth } from './useAuth';
 
 export function useTickets() {
+  const { esUsuario, esAdmin, esSupervisor } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,10 +30,17 @@ export function useTickets() {
       cargaIniciada.current = true;
       setLoading(true);
 
-      const [ticketsData, usuariosData] = await Promise.all([
-        obtenerTickets(),
-        obtenerUsuarios()
-      ]);
+      // Solo Admin y Supervisor pueden ver la lista de usuarios (para asignar)
+      const puedeVerUsuarios = esAdmin() || esSupervisor();
+
+      const promises = [obtenerTickets()];
+      if (puedeVerUsuarios) {
+        promises.push(obtenerUsuarios());
+      }
+
+      const results = await Promise.all(promises);
+      const ticketsData = results[0];
+      const usuariosData = puedeVerUsuarios ? results[1] : [];
 
       setTickets(Array.isArray(ticketsData) ? ticketsData : []);
       setUsuarios(Array.isArray(usuariosData) ? usuariosData : []);
@@ -46,14 +62,34 @@ export function useTickets() {
   }, []);
 
   const crear = async (ticketData) => {
-    if (!ticketData.titulo?.trim()) {
-      throw new Error("El título es obligatorio");
+    if (!ticketData.titulo?.trim() && !ticketData.descripcion?.trim()) {
+      throw new Error("El título o descripción es obligatorio");
     }
 
     const payload = {
-      prioridad: ticketData.prioridad,
+      prioridad: ticketData.prioridad || "Media",
       descripcion: ticketData.descripcion || ticketData.titulo,
+      titulo: ticketData.titulo || ticketData.descripcion,
     };
+
+    // Si viene cliente_id o cliente_correo, incluirlo en el payload
+    if (ticketData.cliente_id) {
+      payload.cliente_id = ticketData.cliente_id;
+    }
+    if (ticketData.cliente_correo) {
+      payload.cliente_correo = ticketData.cliente_correo;
+    }
+
+    // Si viene categoria_id, incluirlo
+    if (ticketData.categoria_id) {
+      payload.categoria_id = ticketData.categoria_id;
+    }
+
+    // Validar datos antes de enviar
+    const validacion = validarDatosTicket(payload);
+    if (!validacion.valid) {
+      throw new Error(validacion.errors.join(', '));
+    }
 
     await crearTicket(payload);
     cargaIniciada.current = false;
@@ -79,27 +115,51 @@ export function useTickets() {
   };
 
   const cambiarEstado = async (id, nuevoEstado) => {
-    await actualizar(id, { estado: nuevoEstado });
+    // Validar que el estado sea válido
+    const estadoNormalizado = normalizarEstado(nuevoEstado);
+    if (!estadoNormalizado) {
+      throw new Error(`Estado inválido: ${nuevoEstado}. Use uno de los estados válidos.`);
+    }
+
+    // Obtener el ticket actual para enviar todos los datos requeridos
+    const ticket = tickets.find(t => {
+      const tId = t?.id ?? t?.ticket_id ?? t?._id;
+      return tId === id;
+    });
+
+    if (!ticket) {
+      throw new Error("Ticket no encontrado");
+    }
+
+    // Normalizar prioridad
+    const prioridadNormalizada = normalizarPrioridad(ticket.prioridad) || "Media";
+
+    // Preparar datos en el formato que espera el backend
+    const updateData = {
+      estado: estadoNormalizado,
+      prioridad: prioridadNormalizada,
+      descripcion: ticket.descripcion || ticket.titulo || ""
+    };
+
+    // Incluir agente_id y categoria_id si existen
+    if (ticket.agente_id) {
+      updateData.agente_id = ticket.agente_id;
+    }
+    if (ticket.categoria_id) {
+      updateData.categoria_id = ticket.categoria_id;
+    }
+
+    // Validar datos antes de enviar
+    const validacion = validarDatosTicket(updateData);
+    if (!validacion.valid) {
+      throw new Error(validacion.errors.join(', '));
+    }
+
+    await actualizar(id, updateData);
   };
 
   const asignar = async (id, agenteId) => {
     await actualizar(id, { agente_id: Number(agenteId) });
-  };
-
-  const cerrar = async (id) => {
-    const previo = [...tickets];
-
-    setTickets((prev) => prev.filter((t) => {
-      const tId = t?.id ?? t?.ticket_id ?? t?._id;
-      return tId !== id;
-    }));
-
-    try {
-      await cerrarTicket(id);
-    } catch (e) {
-      setTickets(previo);
-      throw e;
-    }
   };
 
   const obtenerAgentes = () => {
@@ -116,13 +176,55 @@ export function useTickets() {
   const filtrar = ({ query, estado, prioridad, soloMios, usuarioActual }) => {
     let resultado = [...tickets];
 
-    if (soloMios && usuarioActual) {
-      const esAdmin = (usuarioActual.rol || "").toLowerCase() === "admin";
-      const esSupervisor = (usuarioActual.rol || "").toLowerCase() === "supervisor";
+    if (usuarioActual) {
+      const rol = (usuarioActual.rol || "").toLowerCase();
+      const esAdmin = rol === "admin" || rol === "administrador";
+      const esSupervisor = rol === "supervisor";
+      const esUsuario = rol === "usuario";
+      const usuarioId = usuarioActual.id ?? usuarioActual.usuario_id ?? usuarioActual.user_id ?? usuarioActual._id;
+      const correoLogueado = (usuarioActual.correo || usuarioActual.email || "").toLowerCase();
 
-      if (!esAdmin && !esSupervisor) {
-        const correoLogueado = usuarioActual.correo || usuarioActual.email || "";
+      // Si es usuario regular, solo mostrar sus tickets
+      if (esUsuario) {
+        console.log('🔍 Filtrando tickets para usuario (FULL):', usuarioActual);
+        resultado = resultado.filter((t) => {
+          // Obtener todos los posibles IDs del ticket
+          const idsTicket = [
+            t.cliente_id,
+            t.usuario_id,
+            t.user_id,
+            t.creado_por,
+            t.created_by
+          ].map(id => id ? String(id) : null).filter(Boolean);
 
+          const correosTicket = [
+            t.cliente_correo,
+            t.creado_por_correo,
+            t.email,
+            t.correo
+          ].map(c => c ? String(c).toLowerCase() : null).filter(Boolean);
+
+          const uId = String(usuarioId);
+          const uCorreo = String(correoLogueado).toLowerCase();
+
+          // Verificar si alguno coincide
+          const matchId = idsTicket.includes(uId);
+          const matchCorreo = correosTicket.includes(uCorreo);
+
+          if (!matchId && !matchCorreo) {
+            console.log('❌ Ticket oculto (DETALLE):', {
+              ticket: t,
+              idsEncontrados: idsTicket,
+              correosEncontrados: correosTicket,
+              usuarioBuscado: { id: uId, correo: uCorreo }
+            });
+          }
+
+          return matchId || matchCorreo;
+        });
+      }
+      // Si es agente y soloMios está activo, mostrar solo tickets asignados
+      else if (soloMios && !esAdmin && !esSupervisor) {
         resultado = resultado.filter((t) => {
           const asignadoId = t.agente_id ?? t.asignado_a ?? null;
           const asignadoCorreo = (t.agente || t.asignado_a_correo || "").toLowerCase();
@@ -176,7 +278,6 @@ export function useTickets() {
     actualizar,
     cambiarEstado,
     asignar,
-    cerrar,
     obtenerAgentes,
     obtenerAgentePorId,
     filtrar,

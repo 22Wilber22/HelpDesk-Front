@@ -2,8 +2,12 @@
 
 import { useState, useMemo } from "react";
 import { useClientes } from "../../hooks/useClientes";
+import { useAuth } from "../../hooks/useAuth";
+import Swal from 'sweetalert2';
 
 export default function ClientesView() {
+  const { esUsuario } = useAuth();
+
   // Obtener funciones y datos del hook useClientes
   const {
     clientes,
@@ -66,8 +70,19 @@ export default function ClientesView() {
         empresa: "",
       });
       setEditId(null);
+      Swal.fire({
+        icon: 'success',
+        title: editId != null ? 'Cliente actualizado' : 'Cliente creado',
+        text: 'La operación se realizó con éxito',
+        timer: 1500,
+        showConfirmButton: false
+      });
     } catch (e) {
-      alert(e.message || "Error guardando cliente");
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: e.message || "Error guardando cliente"
+      });
     }
   };
 
@@ -99,17 +114,44 @@ export default function ClientesView() {
   const handleDelete = async (c) => {
     const id = getClienteId(c);
     if (id == null) {
-      alert("Este cliente no tiene un ID reconocible.");
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Este cliente no tiene un ID reconocible.'
+      });
       return;
     }
 
     const nombreCliente = obtenerNombreCliente(c);
-    if (!window.confirm(`¿Eliminar a ${nombreCliente}?`)) return;
+
+    const result = await Swal.fire({
+      title: `¿Eliminar a ${nombreCliente}?`,
+      text: "Esta acción no se puede deshacer",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar'
+    });
+
+    if (!result.isConfirmed) return;
 
     try {
       await eliminar(id);
+      Swal.fire({
+        icon: 'success',
+        title: 'Eliminado',
+        text: 'El cliente ha sido eliminado.',
+        timer: 1500,
+        showConfirmButton: false
+      });
     } catch (e) {
-      alert(e.message || "Error eliminando cliente");
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: e.message || "Error eliminando cliente"
+      });
     }
   };
 
@@ -143,6 +185,17 @@ export default function ClientesView() {
         </button>
       </div>
     );
+
+  // Si es usuario regular, no tiene acceso a gestión de clientes
+  if (esUsuario()) {
+    return (
+      <div className="alert alert-warning" role="alert">
+        <h5 className="alert-heading">Acceso Denegado</h5>
+        <p>No tienes permisos para gestionar clientes.</p>
+        <p className="mb-0">Esta sección es exclusiva para Agentes y personal administrativo.</p>
+      </div>
+    );
+  }
 
   return (
     <>

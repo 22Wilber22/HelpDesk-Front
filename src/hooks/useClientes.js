@@ -1,14 +1,16 @@
 // src/hooks/useClientes.js
 import { useState, useEffect, useRef } from 'react';
-import { 
-  obtenerClientes, 
-  crearCliente, 
-  actualizarCliente, 
+import {
+  obtenerClientes,
+  crearCliente,
+  actualizarCliente,
   eliminarCliente,
-  limpiarCache 
+  limpiarCache
 } from '../services/api';
+import { useAuth } from './useAuth';
 
 export function useClientes() {
+  const { esUsuario } = useAuth();
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -17,20 +19,26 @@ export function useClientes() {
   const cargar = async (forzarRecarga = false) => {
     if (cargaIniciada.current && !forzarRecarga) return;
 
+    // Si es usuario regular, no tiene permisos para ver clientes
+    if (esUsuario()) {
+      setLoading(false);
+      return;
+    }
+
     try {
       cargaIniciada.current = true;
       setLoading(true);
-      
+
       if (forzarRecarga) {
         limpiarCache();
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      
+
       const data = await obtenerClientes();
-      const clientesActivos = Array.isArray(data) 
+      const clientesActivos = Array.isArray(data)
         ? data.filter(c => c.activo !== 0 && c.activo !== false)
         : [];
-      
+
       setClientes(clientesActivos);
       setError("");
     } catch (e) {
@@ -67,7 +75,7 @@ export function useClientes() {
 
   const eliminar = async (id) => {
     const clientesPrevios = [...clientes];
-    
+
     setClientes((prev) => prev.filter((c) => {
       const cId = c?.id ?? c?.cliente_id ?? c?._id;
       return cId !== id;
@@ -92,7 +100,7 @@ export function useClientes() {
       const correo = (c.correo || c.email || "").toLowerCase();
       const telefono = (c.telefono || "").toLowerCase();
       const empresa = (c.empresa || c.razon_social || "").toLowerCase();
-      
+
       return (
         nombre.includes(q) ||
         correo.includes(q) ||
